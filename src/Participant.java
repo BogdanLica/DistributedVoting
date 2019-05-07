@@ -2,17 +2,18 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Queue;
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class Participant {
     private int LISTENING_PORT;
     private int COORDINATOR_PORT;
+//    private int NO_PARTICIPANTS;
     private int TIMEOUT;
     private int failCond;
     private Queue<Integer> ports = new ConcurrentLinkedQueue<Integer>();
+    private Map<String,BufferedWriter> _writeMap = Collections.synchronizedMap(new HashMap<>());
+    private Map<String,BufferedReader> _readMap = Collections.synchronizedMap(new HashMap<>());
 
     public static void main(String[] args){
         Participant me = new Participant(Integer.parseInt(args[0]),Integer.parseInt(args[1]),Integer.parseInt(args[2]),Integer.parseInt(args[3]));
@@ -34,6 +35,7 @@ public class Participant {
         new Thread( () -> {
             try {
                 ServerSocket listen = new ServerSocket(LISTENING_PORT) ;
+                MessageToken msg = new MessageToken();
 
                 Socket s = listen.accept();
 
@@ -43,6 +45,7 @@ public class Participant {
                         new InputStreamReader(s.getInputStream()));
                 String line = null;
                 while ((line = in.readLine()) != null) {
+                    MessageToken.Token newToken = msg.getToken(line);
                     System.out.println(line);
                 }
             } catch (IOException e) {
