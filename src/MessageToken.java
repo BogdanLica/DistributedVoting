@@ -69,6 +69,10 @@ public class MessageToken {
             this._port= Integer.parseInt(port);
 
         }
+
+        public int get_port(){
+            return _port;
+        }
     }
 
 
@@ -83,6 +87,12 @@ public class MessageToken {
                 this._ports.add(Integer.parseInt(port));
             });
         }
+
+
+        public List<Integer> get_ports(){
+            return _ports;
+        }
+
     }
 
 
@@ -94,6 +104,11 @@ public class MessageToken {
         public VoteOptionsToken(String req, List<String> options) {
             this._req = req;
             this._options = options;
+        }
+
+
+        public List<String> get_options(){
+            return _options;
         }
     }
 
@@ -132,11 +147,6 @@ public class MessageToken {
     abstract class Token {
         String _req;
     }
-
-}
-
-
-interface ParticipantMessageToken implements MessageToken {
 
 }
 
