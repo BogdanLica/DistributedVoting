@@ -21,12 +21,14 @@ public class Participant {
 //    private Map<String,BufferedReader> _readMap = Collections.synchronizedMap(new HashMap<>());
     private Queue<PeerThread> peers = new LinkedList<>();
     ListenThread listenConnections;
+//    PeerThread server;
 
     public final static Logger logger = Logger.getLogger(Participant.class.getName());
 
     public static void main(String[] args){
         Participant me = new Participant(Integer.parseInt(args[0]),Integer.parseInt(args[1]),Integer.parseInt(args[2]),Integer.parseInt(args[3]));
-        me.startListening();
+        me.contactCoordinator();
+        //me.startListening();
 
 
 
@@ -45,7 +47,7 @@ public class Participant {
             listen = new ServerSocket(LISTENING_PORT);
         } catch (IOException e) {
             //e.printStackTrace();
-            String message = MessageFormat.format("Could start listening on the port {0}",LISTENING_PORT);
+            String message = MessageFormat.format("Could start listening on the port {0}",Long.toString(LISTENING_PORT));
             logger.log(Level.WARNING,message);
         }
 
@@ -88,6 +90,7 @@ public class Participant {
 
         if(listenConnections.anyTokens()){
             MessageToken.OutcomeToken result = decideOutcome(listenConnections.getTokens());
+            sendOutcome.set(true);
             // send result to server
         }
     }
@@ -112,26 +115,30 @@ public class Participant {
                 BufferedReader in = new BufferedReader(
                         new InputStreamReader(coordinator.getInputStream()));
 
+                logger.log(Level.INFO,"Connected to the server...");
 
                 String line = null;
+
+                /**
+                 * TODO: send a join token
+                 */
+
+                out.write(MessageFormat.format("JOIN {0}",Long.toString(this.LISTENING_PORT)));
+                out.newLine();
+                out.flush();
+                logger.log(Level.INFO,"A Join Token was just sent to the server...");
 
                 while (true)
                 {
                     while ((line = in.readLine()) != null) {
                         MessageToken.Token newToken = msg.getToken(line);
 
-                        if(newToken instanceof MessageToken.JoinToken)
-                        {
-                            MessageToken.JoinToken token = (MessageToken.JoinToken) newToken;
-
-                        }
-
-                        else if(newToken instanceof MessageToken.DetailsToken) {
-
+                        if(newToken instanceof MessageToken.DetailsToken) {
+                            logger.log(Level.INFO,"Reading a Details Token...");
                         }
 
                         else if(newToken instanceof MessageToken.VoteOptionsToken) {
-
+                            logger.log(Level.INFO,"Reading a Vote Option Token...");
                         }
 
                         /**
@@ -140,8 +147,6 @@ public class Participant {
 //                    else if(newToken instanceof )
 
 
-
-                        System.out.println(line);
                     }
 
                     if(sendOutcome.get())
@@ -149,10 +154,12 @@ public class Participant {
                         out.write("MY outcome");
                         out.newLine();
                         out.flush();
+                        sendOutcome.set(false);
+                        logger.log(Level.INFO,"Sending the Outcome to the server...");
                         // send outcome to coordinator
                         // sleep for timeout (time until the next round)
                     }
-                    Thread.sleep(TIMEOUT);
+                    Thread.sleep(1000);
                 }
 
 

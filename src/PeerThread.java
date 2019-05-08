@@ -36,6 +36,11 @@ public class PeerThread implements Runnable {
     }
 
 
+//    public Integer getPortNumber(){
+//        return _client.getPort();
+//    }
+
+
 
     @Override
     public void run() {

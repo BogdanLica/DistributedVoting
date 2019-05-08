@@ -80,16 +80,14 @@ public class MessageToken {
      * Syntax: DETAILS [port]
      */
     class DetailsToken extends Token{
-        private List<Integer> _ports;
+        private List<Long> _ports = new ArrayList<>();
         DetailsToken(String req, List<String> ports){
             this._req = req;
-            ports.forEach( port -> {
-                this._ports.add(Integer.parseInt(port));
-            });
+            ports.forEach( port -> this._ports.add(Long.parseLong(port)));
         }
 
 
-        public List<Integer> get_ports(){
+        public List<Long> get_ports(){
             return _ports;
         }
 

@@ -30,7 +30,7 @@ public class ListenThread implements Runnable {
 
         } catch (IOException e) {
 //            e.printStackTrace();
-            String message = MessageFormat.format("Reader could not be created for port {0}",_client.getPort());
+            String message = MessageFormat.format("Reader could not be created for port {0} ...",_client.getPort());
             Participant.logger.log(Level.WARNING,message);
 
         }
@@ -52,11 +52,11 @@ public class ListenThread implements Runnable {
 
             } catch (IOException e)
             {
-                String message = MessageFormat.format("Could not read from port {0}",_client.getPort());
+                String message = MessageFormat.format("Could not read from port {0} ...",_client.getPort());
                 Participant.logger.log(Level.WARNING,message);
             }
             catch (InterruptedException e){
-                String message = MessageFormat.format("Could not sleep thread {0}",Thread.currentThread().getName());
+                String message = MessageFormat.format("Could not sleep thread {0} ...",Thread.currentThread().getName());
                 Participant.logger.log(Level.WARNING,message);
             }
 
