@@ -49,6 +49,9 @@ public class PeerThread implements Runnable {
             writer = new BufferedWriter(new OutputStreamWriter(_client.getOutputStream()));
             reader = new BufferedReader(new InputStreamReader(_client.getInputStream()));
 
+            String message = MessageFormat.format("New connection accepted from port {0}",_client.getPort());
+            Participant.logger.log(Level.INFO,message);
+
         } catch (IOException e) {
 //            e.printStackTrace();
             String message = MessageFormat.format("Writer or Reader could not be created for port {0}",_client.getPort());

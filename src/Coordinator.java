@@ -97,9 +97,13 @@ public class Coordinator {
                                            if(participants.size() == MAX_CONNECTIONS){
                                                out.write(sendParticipants(port));
                                                out.newLine();
+                                               logger.log(Level.INFO,"A Details Token was sent by the server...");
+                                               out.write(sendVoteOptions());
+                                               out.newLine();
+                                               logger.log(Level.INFO,"A Vote Options Token was sent by the server...");
                                                out.flush();
                                                hold=false;
-                                               logger.log(Level.INFO,"A Details Token was sent by the server...");
+
                                            }
                                        }
 
@@ -150,7 +154,12 @@ public class Coordinator {
         return MessageFormat.format("DETAILS {0}", ports);
     }
 
-//    private String sendVoteOptions(){}
+    private String sendVoteOptions(){
+
+        String options = String.join(" ", this.options);
+
+        return MessageFormat.format("VOTE_OPTIONS {0}", options);
+    }
 
 
 

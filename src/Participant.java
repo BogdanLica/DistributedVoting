@@ -1,7 +1,6 @@
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.UnknownHostException;
 import java.text.MessageFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -16,7 +15,7 @@ public class Participant {
     private int TIMEOUT;
     private int failCond;
     private AtomicBoolean sendOutcome = new AtomicBoolean(false);
-    private Queue<Integer> ports = new ConcurrentLinkedQueue<Integer>();
+    private Queue<Long> ports = new ConcurrentLinkedQueue<>();
 //    private Map<String,BufferedWriter> _writeMap = Collections.synchronizedMap(new HashMap<>());
 //    private Map<String,BufferedReader> _readMap = Collections.synchronizedMap(new HashMap<>());
     private Queue<PeerThread> peers = new LinkedList<>();
@@ -28,7 +27,7 @@ public class Participant {
     public static void main(String[] args){
         Participant me = new Participant(Integer.parseInt(args[0]),Integer.parseInt(args[1]),Integer.parseInt(args[2]),Integer.parseInt(args[3]));
         me.contactCoordinator();
-        //me.startListening();
+        me.startListening();
 
 
 
@@ -134,6 +133,9 @@ public class Participant {
                         MessageToken.Token newToken = msg.getToken(line);
 
                         if(newToken instanceof MessageToken.DetailsToken) {
+                            MessageToken.DetailsToken details = (MessageToken.DetailsToken) newToken;
+                            ports.addAll(details.get_ports());
+                            peerConnectionStart();
                             logger.log(Level.INFO,"Reading a Details Token...");
                         }
 
@@ -156,10 +158,11 @@ public class Participant {
                         out.flush();
                         sendOutcome.set(false);
                         logger.log(Level.INFO,"Sending the Outcome to the server...");
+                        Thread.sleep(TIMEOUT);
                         // send outcome to coordinator
                         // sleep for timeout (time until the next round)
                     }
-                    Thread.sleep(1000);
+
                 }
 
 
@@ -171,11 +174,11 @@ public class Participant {
         }).start();
     }
 
-    private void peerConnection(List<Integer> ports){
+    private void peerConnectionStart(){
         ports.forEach(port -> {
                 Socket peer = null;
                 try {
-                    peer = new Socket("localhost", port);
+                    peer = new Socket("localhost", port.intValue());
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
@@ -183,6 +186,9 @@ public class Participant {
                 peers.offer(client);
 
                 new Thread(client).start();
+
+                String message = MessageFormat.format("New connection established with port {0}",port);
+                Participant.logger.log(Level.INFO,message);
 
 
             }

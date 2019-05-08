@@ -23,7 +23,7 @@ public class MessageToken {
                 ports.add(sTokenizer.nextToken());
             return new DetailsToken(req, ports);
         }
-        if (firstToken.equals("VOTE_OPTION")) {
+        if (firstToken.equals("VOTE_OPTIONS")) {
             List<String> options = new ArrayList<>();
             while (sTokenizer.hasMoreTokens())
                options.add(sTokenizer.nextToken());
