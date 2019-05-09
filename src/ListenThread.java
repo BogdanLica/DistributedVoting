@@ -1,93 +1,128 @@
+import javax.sound.midi.SysexMessage;
 import java.io.*;
 import java.net.Socket;
 import java.text.MessageFormat;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 
 public class ListenThread implements Runnable {
-    private Socket _client;
-    // private BufferedWriter writer;
-    private BufferedReader reader;
     private int timeout;
-    private boolean ready;
-    private List<MessageToken.VoteToken> messages = new ArrayList<>();
+    private AtomicBoolean ready = new AtomicBoolean(false);
+    private AtomicBoolean abort = new AtomicBoolean(false);
+    private int maxClients;
+    private MessageToken.VoteToken vote = null;
+    private Queue<PeerReadThread> readers = new ConcurrentLinkedQueue<>();
+    private Queue<PeerWriteThread> writers = new ConcurrentLinkedQueue<>();
+//    Set<MessageToken.VoteToken> votes = new CopyOnWriteArraySet<>();
+    Map<PeerReadThread,MessageToken.VoteToken> votes = new ConcurrentHashMap<>();
+    private String writeBuffer;
+    private ExecutorService ex;
 
 
-    public ListenThread(Socket socket,int timeout) {
-        _client = socket;
+    public ListenThread(int timeout,int maxConnections) {
         this.timeout=timeout;
+        maxClients=maxConnections;
+    }
+
+
+    public void addClient(Socket client){
+        PeerReadThread reader = new PeerReadThread(client);
+        readers.offer(reader);
+
+//        PeerWriteThread writer = new PeerWriteThread(client);
+//        writers.offer(writer);
+
+//        new Thread(reader).start();
+//        new Thread(writer).start();
     }
 
     @Override
     public void run() {
-        MessageToken msg = new MessageToken();
 
 
-        try {
-//            writer = new BufferedWriter(new OutputStreamWriter(_client.getOutputStream()));
-            reader = new BufferedReader(new InputStreamReader(_client.getInputStream()));
 
-        } catch (IOException e) {
-//            e.printStackTrace();
-            String message = MessageFormat.format("Reader could not be created for port {0} ...",_client.getPort());
-            Participant.logger.log(Level.WARNING,message);
+        ex = Executors.newFixedThreadPool(readers.size());
+        readers.forEach( reader -> ex.submit(reader));
 
-        }
 
-        while (true){
 
-            try {
-                String line = null;
-                List<MessageToken.Token> newTokens = new ArrayList<>();
-                while ((line = reader.readLine()) != null) {
-                    MessageToken.Token newToken = msg.getToken(line);
-                    newTokens.add(newToken);
-//                    System.out.println(line);
+        while (!abort.get()){
+            if(!ready.get()){
+
+                String message;
+                if(readers.size() == maxClients && votes.size() == maxClients){
+                    ready.set(true);
+//                message ="ListenThread ready";
+//                Participant.logger.log(Level.INFO,message);
+                }
+                else {
+                    readers.forEach(reader -> {
+                        if(reader.isReady()){
+                            if(!votes.containsKey(reader)){
+                                String msg = MessageFormat.format("Number of votes received: {0} ...",votes.size());
+                                Participant.logger.log(Level.INFO,msg);
+                            }
+                            //Participant.logger.log(Level.INFO,"Saving vote sent...");
+                            votes.putIfAbsent(reader,reader.getToken());
+                        }
+                    });
                 }
 
-                saveToken(newTokens);
-                ready=true;
-                Thread.sleep(timeout);
-
-            } catch (IOException e)
-            {
-                String message = MessageFormat.format("Could not read from port {0} ...",_client.getPort());
-                Participant.logger.log(Level.WARNING,message);
             }
-            catch (InterruptedException e){
-                String message = MessageFormat.format("Could not sleep thread {0} ...",Thread.currentThread().getName());
-                Participant.logger.log(Level.WARNING,message);
-            }
+//            String message = MessageFormat.format("Number of votes received: {0} ...",votes.size());
+//            Participant.logger.log(Level.INFO,message);
+////
+//            message = MessageFormat.format("Number of readers: {0} ...",readers.size());
+//            Participant.logger.log(Level.INFO,message);
 
 
+//            if(writeBuffer != null){
+//                writers.forEach(writer -> {
+//                    writer.write(writeBuffer);
+//                });
+//                writeBuffer=null;
+//            }
         }
 
     }
 
-    private void saveToken(List<MessageToken.Token> tokens){
+//    public void sendVote(String vote){
+//        writeBuffer = vote;
+//    }
+//    private void saveToken(List<MessageToken.VoteToken> tokens){
+//
+//        tokens.forEach(token -> {
+//            if(token != null)
+//            {
+//                vote.add(token);
+//            }
+//        });
+//
+//    }
 
-        tokens.forEach(token -> {
-            if(token instanceof MessageToken.VoteToken)
-            {
-                messages.add((MessageToken.VoteToken) token);
-            }
-        });
 
+    public void shutdownReaders(){
+        abort.set(true);
+        ex.shutdown();
+//        readers.forEach(PeerReadThread::shutdown);
     }
 
 
-
-    public List<MessageToken.VoteToken> getTokens(){
-        List<MessageToken.VoteToken> temp = new ArrayList<>(messages);
-        messages.clear();
-        ready = false;
-        return temp;
+    public Collection<MessageToken.VoteToken> getVotes(){
+//        MessageToken.VoteToken temp = vote;
+        ready.set(false);
+//        return temp;
+        return votes.values();
     }
 
+    public int getConnectedClients(){
+        return readers.size();
+    }
 
-    public boolean anyTokens(){
-        return messages.size() > 0 && ready;
+    public boolean isReady(){
+        return ready.get();
     }
 
 

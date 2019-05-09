@@ -48,7 +48,7 @@ public class Coordinator {
 //
 //            Socket s = null;
 //            s = listen.accept();
-//            PeerThread client = new PeerThread(s);
+//            PeerWriteThread client = new PeerWriteThread(s);
 //            new Thread(client).start();
 ////            BufferedWriter out = new BufferedWriter(
 ////                    new OutputStreamWriter(s.getOutputStream()));
@@ -107,6 +107,11 @@ public class Coordinator {
                                            }
                                        }
 
+                                   }
+
+                                   else if (newToken instanceof MessageToken.OutcomeToken) {
+                                       logger.log(Level.INFO,"An Outcome Token was received by the server...");
+                                       MessageToken.OutcomeToken msgOutcome = (MessageToken.OutcomeToken) newToken;
                                    }
                                }
                            } catch (IOException e) {

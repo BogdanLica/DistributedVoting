@@ -116,11 +116,11 @@ public class MessageToken {
      * outcome the result of the votes
      */
     class OutcomeToken extends Token{
-        private List<Integer> _ports;
+        private List<Long> _ports = new ArrayList<>();
         public OutcomeToken(String result, List<String> ports) {
             this._req = result;
             ports.forEach( port -> {
-                this._ports.add(Integer.parseInt(port));
+                this._ports.add(Long.parseLong(port));
             });
         }
     }
@@ -131,11 +131,15 @@ public class MessageToken {
      * vote is the option chosen
      */
     class VoteToken extends Token{
-        private int _port;
+        private long _port;
         private String _outcome;
         public VoteToken(String port, String outcome) {
             this._outcome=outcome;
-            this._port=Integer.parseInt(port);
+            this._port=Long.parseLong(port);
+        }
+
+        public String get_outcome(){
+            return _outcome;
         }
     }
 
