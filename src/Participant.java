@@ -26,6 +26,7 @@ public class Participant {
     private ListenThread listenConnection;
     private CyclicBarrier barrier;
     CountDownLatch retransmission = new CountDownLatch(1);
+    private CyclicBarrier conditionBarrier = new CyclicBarrier(2);
     CountDownLatch conditionLatch = new CountDownLatch(1);
     CountDownLatch checkBufferForNewMessages = new CountDownLatch(1);
 //    PeerWriteThread server;
@@ -66,7 +67,7 @@ public class Participant {
 
                 }
                 new Thread(listenConnection).start();
-                new Thread(this::setOutcome).start();
+//                new Thread(this::setOutcome).start();
             }).start();
 
 
@@ -104,7 +105,7 @@ public class Participant {
 
 
     private void setOutcome(){
-            while (true){
+            while (!sendOutcomeReady.get()){
                 if (listenConnection.isReady()){
                     String message = "Computing decision...";
                     Participant.logger.log(Level.INFO,message);
@@ -132,19 +133,10 @@ public class Participant {
                     outcome = decideOutcome(result);
 //                    listenConnection.shutdownReaders();
                     sendOutcomeReady.set(true);
-                    conditionLatch.countDown();
-
-                    try {
-                        checkBufferForNewMessages.await();
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-
-//                    votes.clear();
-//                    break;
-
                 }
             }
+
+            logger.log(Level.INFO,"OUT");
 
     }
 
@@ -164,115 +156,97 @@ public class Participant {
 
 
 
-    private void contactCoordinator(){
-        new Thread(() -> {
+    private void contactCoordinator() {
 
-            try {
-                Socket coordinator = new Socket("localhost",COORDINATOR_PORT);
-                MessageToken msg = new MessageToken();
+        try {
+            Socket coordinator = new Socket("localhost", COORDINATOR_PORT);
+            MessageToken msg = new MessageToken();
 
-                BufferedWriter out = new BufferedWriter(
-                        new OutputStreamWriter(coordinator.getOutputStream()));
-                BufferedReader in = new BufferedReader(
-                        new InputStreamReader(coordinator.getInputStream()));
+            BufferedWriter out = new BufferedWriter(
+                    new OutputStreamWriter(coordinator.getOutputStream()));
+            BufferedReader in = new BufferedReader(
+                    new InputStreamReader(coordinator.getInputStream()));
 
-                //logger.log(Level.INFO,"Connected to the server...");
+            //logger.log(Level.INFO,"Connected to the server...");
 
-                String line = null;
+            String line = null;
 
-                /**
-                 * TODO: send a join token
-                 */
+            /**
+             * TODO: send a join token
+             */
 
-                out.write(MessageFormat.format("JOIN {0}",Long.toString(this.LISTENING_PORT)));
-                out.newLine();
-                out.flush();
-                logger.log(Level.INFO,"A Join Token was just sent to the server...");
+            out.write(MessageFormat.format("JOIN {0}", Long.toString(this.LISTENING_PORT)));
+            out.newLine();
+            out.flush();
+            logger.log(Level.INFO, "A Join Token was just sent to the server...");
 
-                while (true)
-                {
-                    if ((line = in.readLine()) != null) {
-                        MessageToken.Token newToken = msg.getToken(line);
+            while (true) {
+                if ((line = in.readLine()) != null) {
+                    MessageToken.Token newToken = msg.getToken(line);
 
-                        if(newToken instanceof MessageToken.DetailsToken) {
-                            MessageToken.DetailsToken details = (MessageToken.DetailsToken) newToken;
-                            ports.addAll(details.get_ports());
-                            logger.log(Level.INFO,"Reading a Details Token...");
+                    if (newToken instanceof MessageToken.DetailsToken) {
+                        MessageToken.DetailsToken details = (MessageToken.DetailsToken) newToken;
+                        ports.addAll(details.get_ports());
+                        logger.log(Level.INFO, "Reading a Details Token...");
 //                            barrierWrite = new CyclicBarrier(ports.size());
 //                            barrierRead = new CyclicBarrier(ports.size());
 
 
+                    }
+                    else if (newToken instanceof MessageToken.VoteOptionsToken) {
+                        MessageToken.VoteOptionsToken vote = (MessageToken.VoteOptionsToken) newToken;
+                        logger.log(Level.INFO, "Reading a Vote Option Token...");
+                        options.addAll(vote.get_options());
 
-                        }
+                        myVote = ownDecision();
 
-                        else if(newToken instanceof MessageToken.VoteOptionsToken) {
-                            MessageToken.VoteOptionsToken vote = (MessageToken.VoteOptionsToken) newToken;
-                            logger.log(Level.INFO,"Reading a Vote Option Token...");
-                            options.addAll(vote.get_options());
-
-                            myVote = ownDecision();
-
-                            this.startListening();
-                            peerConnectionStart();
-                            conditionLatch.await();
-//                            listenConnection.sendVote(myVote);
-
-//                            new Thread(this::setOutcome).start();
+                        peerConnectionStart();
+                        this.startListening();
+                        this.setOutcome();
 
 
+                    }
+                    else {
+                        logger.log(Level.INFO,"Empty");
+                    }
 
-//                            myVote = ownDecision();
-//                            peers.forEach(peer -> {
-//                                        peer.writeToSocket(MessageFormat.format("VOTE {0} {1}",Long.toString(LISTENING_PORT),myVote));
-////                                logger.log(Level.INFO,MessageFormat.format("Sending Vote {0} to port {1} ...",myVote,Long.toString(LISTENING_PORT)));
-
-//                            boolean hold = true;
-//                            while(hold){
-//                                if(peers.size()==ports.size()){
-//                                    peers.forEach(peer -> {
-//                                        peer.writeToSocket(MessageFormat.format("VOTE {0} {1}",Long.toString(LISTENING_PORT),myVote));
-////                                logger.log(Level.INFO,MessageFormat.format("Sending Vote {0} to port {1} ...",myVote,Long.toString(LISTENING_PORT)));
-//                                    });
-//                                }
-//                            }
-
-
-
-
-                        }
-
-                        /**
-                         * TODO: Implement restart message
-                         */
+                    /**
+                     * TODO: Implement restart message
+                     */
 //                    else if(newToken instanceof )
 
-
-                    }
-
-//                    System.out.println("ALIVE");
-                    if(sendOutcomeReady.get())
-                    {
-                        out.write(sendOutcome());
-                        out.newLine();
-                        out.flush();
-                        sendOutcomeReady.set(false);
-                        logger.log(Level.INFO,"Sending the Outcome to the server...");
-                        myVote = ownDecision();
-                        retransmission.countDown();
-
-                        this.resendMessage();
-//                        Thread.sleep(TIMEOUT);
-                        // send outcome to coordinator
-                        // sleep for timeout (time until the next round)
-                    }
 
                 }
 
 
-            } catch (IOException | InterruptedException e) {
-                e.printStackTrace();
+                while (sendOutcomeReady.get()) {
+                    try {
+                        out.write(sendOutcome());
+                        out.newLine();
+                        out.flush();
+                        sendOutcomeReady.set(false);
+                        logger.log(Level.INFO, "Sending the Outcome to the server...");
+                        myVote = ownDecision();
+                        Thread.sleep(TIMEOUT);
+                        peers.forEach(peer -> {
+                            peer.write(MessageFormat.format("VOTE {0} {1}", Long.toString(LISTENING_PORT), myVote));
+                        });
+//                            new Thread(this::setOutcome).start();
+                        setOutcome();
+                        logger.log(Level.INFO, "OUT SERVER");
+//                            sendOutcomeReady.set(false);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+                }
+
             }
-        }).start();
+
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private String sendOutcome(){
@@ -353,19 +327,18 @@ public class Participant {
 
     public void resendMessage(){
         new Thread(() -> {
-            while (true){
                 try {
                     Thread.sleep(TIMEOUT);
                     peers.forEach(peer -> {
                         peer.write(MessageFormat.format("VOTE {0} {1}",Long.toString(LISTENING_PORT),myVote));
                     });
-                    checkBufferForNewMessages.countDown();
-                    retransmission.await();
+//                    checkBufferForNewMessages.countDown();
+//                    conditionLatch = new CountDownLatch(1);
+//                    conditionLatch.await();
                 } catch (InterruptedException e) {
 //                e.printStackTrace();
                     logger.log(Level.INFO,"Could not sleep Retransmission Thread...");
                 }
-            }
         }).start();
 
     }

@@ -113,8 +113,10 @@ public class ListenThread implements Runnable {
     public Collection<MessageToken.VoteToken> getVotes(){
 //        MessageToken.VoteToken temp = vote;
         ready.set(false);
+        Collection<MessageToken.VoteToken> tmp = votes.values();
 //        return temp;
-        return votes.values();
+        votes.clear();
+        return tmp;
     }
 
     public int getConnectedClients(){

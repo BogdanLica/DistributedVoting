@@ -78,16 +78,16 @@ public class PeerReadThread implements Runnable {
                     }
                 }
 
-                Thread.sleep(1000);
+//                Thread.sleep(1000);
 
             } catch (IOException e)
             {
                 String message = MessageFormat.format("Could not read from port {0} ...",_client.getPort());
                 Participant.logger.log(Level.WARNING,message);
             }
-            catch (InterruptedException e){
-                Thread.currentThread().interrupt();
-            }
+//            catch (InterruptedException e){
+//                Thread.currentThread().interrupt();
+//            }
 //            catch (InterruptedException e){
 //                String message = MessageFormat.format("Could not sleep thread {0} ...",Thread.currentThread().getName());
 //                Participant.logger.log(Level.WARNING,message);

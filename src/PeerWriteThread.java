@@ -74,7 +74,7 @@ public class PeerWriteThread implements Runnable {
                     buffer.set("");
                 }
 
-                Thread.sleep(1000);
+//                Thread.sleep(1000);
 
             }
 
@@ -84,9 +84,9 @@ public class PeerWriteThread implements Runnable {
             Participant.logger.log(Level.WARNING,message);
 
         }
-        catch (InterruptedException e){
-            Thread.currentThread().interrupt();
-        }
+//        catch (InterruptedException e){
+//            Thread.currentThread().interrupt();
+//        }
 
     }
 }
