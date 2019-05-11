@@ -60,10 +60,10 @@ public class ListenThread implements Runnable {
                 else {
                     readers.forEach(reader -> {
                         if(reader.isReady()){
-                            if(!votes.containsKey(reader)){
-                                String msg = MessageFormat.format("Number of votes received: {0} ...",votes.size());
-                                Participant.logger.log(Level.INFO,msg);
-                            }
+//                            if(!votes.containsKey(reader)){
+//                                String msg = MessageFormat.format("Number of votes received: {0} ...",votes.size());
+//                                Participant.logger.log(Level.INFO,msg);
+//                            }
                             //Participant.logger.log(Level.INFO,"Saving vote sent...");
                             votes.putIfAbsent(reader,reader.getToken());
                         }
@@ -110,12 +110,11 @@ public class ListenThread implements Runnable {
     }
 
 
-    public Collection<MessageToken.VoteToken> getVotes(){
+    public List<MessageToken.VoteToken> getVotes(){
 //        MessageToken.VoteToken temp = vote;
-        ready.set(false);
-        Collection<MessageToken.VoteToken> tmp = votes.values();
-//        return temp;
+        List<MessageToken.VoteToken> tmp = new ArrayList<>(votes.values());
         votes.clear();
+        ready.set(false);
         return tmp;
     }
 
