@@ -110,8 +110,15 @@ public class Coordinator {
                                    }
 
                                    else if (newToken instanceof MessageToken.OutcomeToken) {
-                                       logger.log(Level.INFO,"An Outcome Token was received by the server...");
                                        MessageToken.OutcomeToken msgOutcome = (MessageToken.OutcomeToken) newToken;
+
+                                       String ports = msgOutcome.get_ports()
+                                               .stream()
+                                               .map(Object::toString)
+                                               .collect(Collectors.joining(" "));
+
+                                       String message = MessageFormat.format("Outcome result : {0} from {1}",msgOutcome.getOutcome(),ports);
+                                       logger.log(Level.INFO,message);
                                    }
                                }
                            } catch (IOException e) {

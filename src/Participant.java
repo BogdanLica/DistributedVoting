@@ -12,24 +12,15 @@ import java.util.stream.Collectors;
 public class Participant {
     private Long LISTENING_PORT;
     private int COORDINATOR_PORT;
-//    private int NO_PARTICIPANTS;
     private int TIMEOUT;
     private int failCond;
     private AtomicBoolean sendOutcomeReady = new AtomicBoolean(false);
     private Queue<Long> ports = new ConcurrentLinkedQueue<>();
-//    private Map<String,BufferedWriter> _writeMap = Collections.synchronizedMap(new HashMap<>());
-//    private Map<String,BufferedReader> _readMap = Collections.synchronizedMap(new HashMap<>());
     private Queue<PeerWriteThread> peers = new ConcurrentLinkedQueue<>();
     private List<String> options = new ArrayList<>();
     private volatile String outcome;
     private volatile String myVote;
     private ListenThread listenConnection;
-    private CyclicBarrier barrier;
-    CountDownLatch retransmission = new CountDownLatch(1);
-    private CyclicBarrier conditionBarrier = new CyclicBarrier(2);
-    CountDownLatch conditionLatch = new CountDownLatch(1);
-    CountDownLatch checkBufferForNewMessages = new CountDownLatch(1);
-//    PeerWriteThread server;
 
     public final static Logger logger = Logger.getLogger(Participant.class.getName());
 
@@ -79,28 +70,6 @@ public class Participant {
         }
 
 
-//        new Thread( () -> {
-//            try {
-//                ServerSocket listen = new ServerSocket(LISTENING_PORT) ;
-//                MessageToken msg = new MessageToken();
-//
-//                Socket s = listen.accept();
-//
-//                BufferedWriter out = new BufferedWriter(
-//                        new OutputStreamWriter(s.getOutputStream()));
-//                BufferedReader in = new BufferedReader(
-//                        new InputStreamReader(s.getInputStream()));
-//                String line = null;
-//                while ((line = in.readLine()) != null) {
-//                    MessageToken.Token newToken = msg.getToken(line);
-//                    System.out.println(line);
-//                }
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
-//
-//        }).start();
-
     }
 
 
@@ -129,8 +98,8 @@ public class Participant {
                                 }
                             });
 
-                    message = MessageFormat.format("Decision made with {0} votes...",result.values().stream().mapToInt(Integer::intValue).sum());
-                    Participant.logger.log(Level.INFO,message);
+//                    message = MessageFormat.format("Decision made with {0} votes...",result.values().stream().mapToInt(Integer::intValue).sum());
+//                    Participant.logger.log(Level.INFO,message);
 
 
                     /**
@@ -171,8 +140,17 @@ public class Participant {
 
     //TODO: take more than max
     private String decideOutcome(Map<String,Integer> result){
+        int max = result.values().stream().max(Comparator.naturalOrder()).get();
+        List<String> keysWithMaxValues = result.entrySet().stream()
+                .filter(e -> e.getValue() == max)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
 
-        return Collections.max(result.entrySet(), Comparator.comparingInt(Map.Entry::getValue)).getKey();
+        return (keysWithMaxValues.size() > 1) ? "null" : keysWithMaxValues.get(0);
+
+//        if(keysWithMaxValues.size() > 1) return "null"
+//
+//        return Collections.max(result.entrySet(), Comparator.comparingInt(Map.Entry::getValue)).getKey();
     }
 
 
@@ -192,10 +170,6 @@ public class Participant {
 
             String line = null;
 
-            /**
-             * TODO: send a join token
-             */
-
             out.write(MessageFormat.format("JOIN {0}", Long.toString(this.LISTENING_PORT)));
             out.newLine();
             out.flush();
@@ -212,15 +186,11 @@ public class Participant {
 
                             logger.log(Level.INFO, "Sending the Outcome to the server...");
                             myVote = ownDecision();
-                            Thread.sleep(TIMEOUT);
+                            Thread.sleep(TIMEOUT*2);
                             peers.forEach(peer -> {
                                 peer.write(MessageFormat.format("VOTE {0} {1}", Long.toString(LISTENING_PORT), myVote));
                             });
                             sendOutcomeReady.set(false);
-//                            new Thread(this::setOutcome).start();
-//                            setOutcome();
-//                            logger.log(Level.INFO, "OUT SERVER");
-//                            sendOutcomeReady.set(false);
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
@@ -239,8 +209,6 @@ public class Participant {
                         MessageToken.DetailsToken details = (MessageToken.DetailsToken) newToken;
                         ports.addAll(details.get_ports());
                         logger.log(Level.INFO, "Reading a Details Token...");
-//                            barrierWrite = new CyclicBarrier(ports.size());
-//                            barrierRead = new CyclicBarrier(ports.size());
 
 
                     } else if (newToken instanceof MessageToken.VoteOptionsToken) {
@@ -267,9 +235,6 @@ public class Participant {
                 }
 
             }
-
-
-
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -299,14 +264,10 @@ public class Participant {
                         peers.offer(client);
                         portsCopy.remove(port);
 
-//                        new Thread(client).start();
                     } catch (IOException e) {
 //                    e.printStackTrace();
                         logger.log(Level.INFO,"Error connecting to port {0} ...",port.intValue());
                     }
-
-//                String message = MessageFormat.format("New connection established with port {0}",port);
-//                Participant.logger.log(Level.INFO,message);
 
 
                 });
@@ -315,42 +276,8 @@ public class Participant {
             peers.forEach(peer -> {
                 peer.write(MessageFormat.format("VOTE {0} {1}",Long.toString(LISTENING_PORT),myVote));
                 new Thread(peer).start();
-//                peer.write(MessageFormat.format("VOTE {0} {1}",Long.toString(LISTENING_PORT),myVote));
-                //logger.log(Level.INFO,MessageFormat.format("Sending Vote {0} to port {1} ...",myVote,Long.toString(LISTENING_PORT)));
             });
         }).start();
-
-
-
-//                    new Thread( () -> {
-//
-//                        try {
-//
-//
-//                            BufferedWriter out = new BufferedWriter(
-//                                    new OutputStreamWriter(peer.getOutputStream()));
-//                            BufferedReader in = new BufferedReader(
-//                                    new InputStreamReader(peer.getInputStream()));
-//
-//                            connections.add(peer);
-//                            while (true) {
-//                                out.write("Hello World from port " + LISTENING_PORT);
-//                                out.newLine();
-//                                out.write("Currently there are " + connections.size() + " clients connected");
-//                                out.flush();
-//
-//                                Thread.sleep(200);
-//                            }
-//                        } catch (UnknownHostException e) {
-//                            e.printStackTrace();
-//                        } catch (IOException e) {
-//                            e.printStackTrace();
-//                        } catch (InterruptedException e) {
-//                            e.printStackTrace();
-//                        }
-//
-//                    }).start();
-
     }
 
 

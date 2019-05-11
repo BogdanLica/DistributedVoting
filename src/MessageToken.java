@@ -117,12 +117,26 @@ public class MessageToken {
      */
     class OutcomeToken extends Token{
         private List<Long> _ports = new ArrayList<>();
+
         public OutcomeToken(String result, List<String> ports) {
             this._req = result;
             ports.forEach( port -> {
                 this._ports.add(Long.parseLong(port));
             });
         }
+
+
+        public String getOutcome(){
+            return this._req;
+        }
+
+
+        public List<Long> get_ports(){
+            return this._ports;
+        }
+
+
+
     }
 
     /**
