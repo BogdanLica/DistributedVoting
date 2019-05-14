@@ -41,16 +41,18 @@ public class MessageToken {
             return null;
         }
         if(firstToken.equals("VOTE")){
-            if(sTokenizer.hasMoreTokens())
+            List<String> ports = new ArrayList<>();
+            List<String> outcomes = new ArrayList<>();
+            while (sTokenizer.hasMoreTokens())
             {
-                String port = sTokenizer.nextToken();
+                ports.add(sTokenizer.nextToken());
                 if(sTokenizer.hasMoreTokens()){
-                    String outcome = sTokenizer.nextToken();
-                    return new VoteToken(port,outcome);
+                    outcomes.add(sTokenizer.nextToken());
                 }
-                return null;
             }
-            return null;
+
+            return new VoteToken(ports,outcomes);
+
 
         }
 
@@ -140,20 +142,26 @@ public class MessageToken {
     }
 
     /**
-     * Syntax: VOTE port vote
+     * Syntax: VOTE [port] [vote]
      * port is the sender's port number
      * vote is the option chosen
      */
     class VoteToken extends Token{
-        private long _port;
-        private String _outcome;
-        public VoteToken(String port, String outcome) {
-            this._outcome=outcome;
-            this._port=Long.parseLong(port);
+        private List<Long> _ports = new ArrayList<>();
+        private List<String> _outcomes = new ArrayList<>();
+        public VoteToken(List<String> ports, List<String> outcome) {
+            this._outcomes=outcome;
+
+            ports.forEach(port -> this._ports.add(Long.parseLong(port)));
         }
 
-        public String get_outcome(){
-            return _outcome;
+        public List<String> get_outcome(){
+            return _outcomes;
+        }
+
+
+        public List<Long> get_ports(){
+            return _ports;
         }
     }
 

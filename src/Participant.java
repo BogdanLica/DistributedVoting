@@ -1,3 +1,4 @@
+import javax.sound.midi.SysexMessage;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -5,6 +6,7 @@ import java.text.MessageFormat;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -14,13 +16,16 @@ public class Participant {
     private int COORDINATOR_PORT;
     private int TIMEOUT;
     private int failCond;
+    private AtomicInteger round = new AtomicInteger(1);
     private AtomicBoolean sendOutcomeReady = new AtomicBoolean(false);
     private Queue<Long> ports = new ConcurrentLinkedQueue<>();
     private Queue<PeerWriteThread> peers = new ConcurrentLinkedQueue<>();
+    private Map<String,Integer> votesReceived = new ConcurrentHashMap<>();
     private List<String> options = new ArrayList<>();
     private volatile String outcome;
     private volatile String myVote;
     private ListenThread listenConnection;
+    ServerSocket listen = null;
 
     public final static Logger logger = Logger.getLogger(Participant.class.getName());
 
@@ -39,10 +44,10 @@ public class Participant {
     }
 
     private void startListening(){
-        ServerSocket listen = null;
+
         try {
             listen = new ServerSocket(LISTENING_PORT.intValue());
-            listenConnection =  new ListenThread(TIMEOUT,ports.size());
+            listenConnection =  new ListenThread(TIMEOUT,ports.size(),failCond);
 
             ServerSocket finalListen = listen;
             new Thread( () -> {
@@ -59,7 +64,12 @@ public class Participant {
                 }
                 new Thread(listenConnection).start();
                 new Thread(this::setOutcome).start();
+
+
+
             }).start();
+
+
 
 
 
@@ -75,58 +85,137 @@ public class Participant {
 
     private void setOutcome(){
         while (true){
+
             if (!sendOutcomeReady.get()){
                 if (listenConnection.isReady()){
+
+
+
+                    Map<Long,String> votes = listenConnection.getVotes();
+                    String v =  votes.entrySet()
+                            .stream()
+                            .map(e -> e.getKey() + " " + e.getValue())
+                            .collect(Collectors.joining(" "));
+
+                    peers.forEach(peer -> {
+                        peer.write("VOTE " + v);
+//                        logger.log(Level.INFO,message);
+                    });
+
+
+
                     String message = "Computing decision...";
                     Participant.logger.log(Level.INFO,message);
 
 
                     Map<String,Integer> result = new HashMap<>();
-                    result.put(myVote,1);
+                    if(!votes.containsKey(LISTENING_PORT))
+                    {
+                        result.put(myVote,1);
+                    }
 
-
-                    listenConnection
-                            .getVotes()
+                    votes.values()
                             .forEach(voteToken -> {
-                                if(result.containsKey(voteToken.get_outcome())){
-                                    int tmp = result.get(voteToken.get_outcome());
+                                if(result.containsKey(voteToken)){
+                                    int tmp = result.get(voteToken);
                                     tmp++;
-                                    result.put(voteToken.get_outcome(),tmp);
+                                    result.put(voteToken,tmp);
                                 }
                                 else {
-                                    result.put(voteToken.get_outcome(),1);
+                                    result.put(voteToken,1);
                                 }
                             });
 
-//                    message = MessageFormat.format("Decision made with {0} votes...",result.values().stream().mapToInt(Integer::intValue).sum());
-//                    Participant.logger.log(Level.INFO,message);
+                    message = MessageFormat.format("Decision made with {0} votes...",votes.values().size());
+                    Participant.logger.log(Level.INFO,message);
+
+                    message = MessageFormat.format("The votes were {0}...",votes.values());
+                    Participant.logger.log(Level.INFO,message);
+
+
+
+
+                    System.out.println("");
+                    outcome = decideOutcome(result);
+                    sendOutcomeReady.set(true);
+                    break;
 
 
                     /**
                      * Check if different result are achieved over the course of multiple rounds
                      */
-                    String allOptions = result.keySet()
-                            .stream()
-                            .map(Object::toString)
-                            .collect(Collectors.joining(" "));
+//                    String allOptions = result.keySet()
+//                            .stream()
+//                            .map(Object::toString)
+//                            .collect(Collectors.joining(" "));
+//
+//                    String allValues = result.values()
+//                            .stream()
+//                            .map(Object::toString)
+//                            .collect(Collectors.joining(" "));
+//
+//                    message = MessageFormat.format("Options: {0}",allOptions);
+//                    Participant.logger.log(Level.INFO,message);
+//                    message = MessageFormat.format("Values: {0}",allValues);
+//                    Participant.logger.log(Level.INFO,message);
+//
+//
+//
+//                    outcome = decideOutcome(result);
+                }
+//                logger.log(Level.INFO,"BLOCKED");
+                else if(listenConnection.newVotesNotification()){
 
-                    String allValues = result.values()
-                            .stream()
-                            .map(Object::toString)
-                            .collect(Collectors.joining(" "));
+                    if(failCond == 1){
+//                    Thread.sleep(1000);
+                        listenConnection.abort();
+                        propagateNewMessages(listenConnection);
+                        System.exit(0);
+                        break;
+//                        try {
+//                            listen.close();
+//                            listenConnection.shutdownReaders();
+//                            peers.forEach(PeerWriteThread::shutdown);
+//                            logger.log(Level.INFO,"Closing..");
+//                            return;
+//                        } catch (IOException e) {
+//                            e.printStackTrace();
+//                        }
+//                        System.exit(0);
+                    }
+                    else {
+                        propagateNewMessages(listenConnection);
+                    }
 
-                    message = MessageFormat.format("Options: {0}",allOptions);
-                    Participant.logger.log(Level.INFO,message);
-                    message = MessageFormat.format("Values: {0}",allValues);
-                    Participant.logger.log(Level.INFO,message);
 
-
-
-                    outcome = decideOutcome(result);
-                    sendOutcomeReady.set(true);
                 }
             }
+
+
+
+
         }
+
+    }
+
+
+    private void propagateNewMessages(ListenThread connection){
+
+        Map<String,String> votesThisRound = connection.sendNewVotes();
+//                    votesThisRound.remove(Long.toString(LISTENING_PORT));
+
+        peers.forEach(peer -> {
+            String message =  votesThisRound.entrySet()
+                    .stream()
+//                    .filter(e -> !(e.getKey().equals(Integer.toString(peer.getPort()))))
+                    .map(e -> e.getKey() + " " + e.getValue())
+                    .collect(Collectors.joining(" "));
+
+
+
+            peer.write("VOTE " + message);
+//                        logger.log(Level.INFO,message);
+        });
 
     }
 
@@ -138,7 +227,6 @@ public class Participant {
 
 
 
-    //TODO: take more than max
     private String decideOutcome(Map<String,Integer> result){
         int max = result.values().stream().max(Comparator.naturalOrder()).get();
         List<String> keysWithMaxValues = result.entrySet().stream()
@@ -179,21 +267,42 @@ public class Participant {
             new Thread( () -> {
                 while (!restartVote.get()){
                     if(sendOutcomeReady.get()){
-                        try {
-                            out.write(sendOutcome());
-                            out.newLine();
-                            out.flush();
 
-                            logger.log(Level.INFO, "Sending the Outcome to the server...");
-                            myVote = ownDecision();
-                            Thread.sleep(TIMEOUT*2);
-                            peers.forEach(peer -> {
-                                peer.write(MessageFormat.format("VOTE {0} {1}", Long.toString(LISTENING_PORT), myVote));
-                            });
-                            sendOutcomeReady.set(false);
-                        } catch (Exception e) {
-                            e.printStackTrace();
+                        if(failCond == 2)
+                        {
+                            closeParticipantConnections();
+                        } else {
+                            try {
+                                String tmp = sendOutcome();
+                                System.out.println(tmp);
+                                out.write(tmp);
+                                out.newLine();
+                                out.flush();
+
+                                logger.log(Level.INFO, "Sending the Outcome to the server...");
+
+                                if(!outcome.equals("null")){
+                                    System.exit(0);
+                                }
+
+//                                restartVote.set(true);
+
+
+
+//                                myVote = ownDecision();
+//                                Thread.sleep(TIMEOUT*2);
+//                                peers.forEach(peer -> {
+//                                    peer.write(MessageFormat.format("VOTE {0} {1}", Long.toString(LISTENING_PORT), myVote));
+//                                });
+//                                sendOutcomeReady.set(false);
+
+
+
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
                         }
+
                     }
 
                 }
@@ -241,6 +350,18 @@ public class Participant {
         }
     }
 
+    private void closeParticipantConnections() {
+        listenConnection.shutdownReaders();
+        for (PeerWriteThread peer : peers) {
+            peer.shutdown();
+        }
+        try {
+            listen.close();
+        } catch (IOException e) {
+            logger.log(Level.INFO,"Closing my listening port");
+        }
+    }
+
     private String sendOutcome(){
         List<Long> portsCopy = new ArrayList<>(ports);
         portsCopy.add(LISTENING_PORT);
@@ -274,9 +395,30 @@ public class Participant {
             }
 
             peers.forEach(peer -> {
-                peer.write(MessageFormat.format("VOTE {0} {1}",Long.toString(LISTENING_PORT),myVote));
                 new Thread(peer).start();
             });
+
+            // fail during step 4
+            if(failCond == 1){
+                int skipElements = ThreadLocalRandom.current().nextInt(1,peers.size());
+
+                peers.stream()
+                        .skip(skipElements)
+                        .forEach(peer -> {
+                            peer.write(MessageFormat.format("VOTE {0} {1}",Long.toString(LISTENING_PORT),myVote));
+                        });
+
+                //TODO: fail participant by closing all sockets
+
+                logger.log(Level.INFO,MessageFormat.format("I skipped {0} participants",skipElements));
+
+            }
+            else {
+                peers.forEach(peer -> {
+                    peer.write(MessageFormat.format("VOTE {0} {1}",Long.toString(LISTENING_PORT),myVote));
+                });
+            }
+
         }).start();
     }
 

@@ -1,9 +1,9 @@
 import java.io.*;
 import java.net.Socket;
+import java.net.SocketException;
+import java.sql.Time;
 import java.text.MessageFormat;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CyclicBarrier;
@@ -19,10 +19,13 @@ public class PeerReadThread implements Runnable {
 //    private List<String> buffer = new CopyOnWriteArrayList<>();
     private AtomicReference<MessageToken.VoteToken> buffer = new AtomicReference<>();
     private AtomicBoolean running = new AtomicBoolean(true);
+    private AtomicBoolean closed = new AtomicBoolean(false);
+    private int timeout;
 
 
-    public PeerReadThread(Socket client){
+    public PeerReadThread(Socket client,int timeout){
         this._client=client;
+
 
 
 
@@ -36,6 +39,14 @@ public class PeerReadThread implements Runnable {
             Participant.logger.log(Level.WARNING,message);
 
         }
+
+//        try {
+//            _client.setSoTimeout(timeout);
+//        } catch (SocketException e) {
+//            closed.set(true);
+//        }
+
+
     }
 
 
@@ -52,7 +63,9 @@ public class PeerReadThread implements Runnable {
 
         MessageToken msg = new MessageToken();
 
+
         List<MessageToken.VoteToken> newTokens = new ArrayList<>();
+
 
         while (running.get()){
             try {
@@ -62,7 +75,6 @@ public class PeerReadThread implements Runnable {
                     if ((line = reader.readLine()) != null) {
 
                         MessageToken.Token newToken = msg.getToken(line);
-
                         if(newToken instanceof MessageToken.VoteToken)
                         {
 
@@ -78,12 +90,19 @@ public class PeerReadThread implements Runnable {
                     }
                 }
 
+
 //                Thread.sleep(1000);
 
-            } catch (IOException e)
+            }
+//            catch (SocketException e) {
+//                closed.set(true);
+//            }
+            catch (IOException e)
             {
-                String message = MessageFormat.format("Could not read from port {0} ...",_client.getPort());
-                Participant.logger.log(Level.WARNING,message);
+//                String message = MessageFormat.format("Could not read from port {0} ...",_client.getPort());
+//                Participant.logger.log(Level.WARNING,message);
+//                closed.set(true);
+//                running.set(false);
             }
 //            catch (InterruptedException e){
 //                Thread.currentThread().interrupt();
@@ -101,6 +120,12 @@ public class PeerReadThread implements Runnable {
 
     public void shutdown(){
         running.set(false);
+        try {
+            reader.close();
+            _client.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public boolean isReady(){
@@ -108,4 +133,7 @@ public class PeerReadThread implements Runnable {
     }
 
 
+    public boolean isClosed() {
+        return closed.get();
+    }
 }

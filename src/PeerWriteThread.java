@@ -30,8 +30,8 @@ public class PeerWriteThread implements Runnable {
 
     private void writeToSocket(String text){
         try {
-//            String message = MessageFormat.format("Sending message {0} to port {1}",text,_client.getPort());
-//            Participant.logger.log(Level.INFO,message);
+            String message = MessageFormat.format("Sending message {0} to port {1}",text,_client.getPort());
+            Participant.logger.log(Level.INFO,message);
             writer.write(text);
             writer.newLine();
             writer.flush();
@@ -44,10 +44,28 @@ public class PeerWriteThread implements Runnable {
     }
 
 
+
+    public void shutdown(){
+        try {
+            writer.close();
+//            _client.shutdownOutput();
+            _client.close();
+        } catch (IOException e) {
+//            e.printStackTrace();
+            Participant.logger.log(Level.INFO,"Closed connection to a peer");
+        }
+
+    }
+
+
     public boolean getStatusUP(){
         return abortWrite.get();
     }
 
+
+    public Integer getPort(){
+        return _client.getPort();
+    }
 
 
 

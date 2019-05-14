@@ -5,30 +5,77 @@ import java.text.MessageFormat;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class ListenThread implements Runnable {
     private int timeout;
     private AtomicBoolean ready = new AtomicBoolean(false);
     private AtomicBoolean abort = new AtomicBoolean(false);
+    private AtomicBoolean sendNewVotes = new AtomicBoolean(false);
     private int maxClients;
+    private int failCond;
     private MessageToken.VoteToken vote = null;
     private Queue<PeerReadThread> readers = new ConcurrentLinkedQueue<>();
-    private Queue<PeerWriteThread> writers = new ConcurrentLinkedQueue<>();
-//    Set<MessageToken.VoteToken> votes = new CopyOnWriteArraySet<>();
-    Map<PeerReadThread,MessageToken.VoteToken> votes = new ConcurrentHashMap<>();
-    private String writeBuffer;
+
+    Map<Long,String> votes = new ConcurrentHashMap<>();
+    private Map<Long,String> lastState;
+    private AtomicInteger maxClientsInitially = new AtomicInteger(0);
     private ExecutorService ex;
+//    private AtomicBoolean roundsLeft = new AtomicBoolean(true);
+    private Map<PeerReadThread,MessageToken.VoteToken> propagateNewVotes = new ConcurrentHashMap<>();
+    private Timer time = new Timer();
+    private TimerTask task;
+    private AtomicBoolean noMoreReadings = new AtomicBoolean(false);
 
 
-    public ListenThread(int timeout,int maxConnections) {
+    public ListenThread(int timeout,int maxConnections,int fail) {
         this.timeout=timeout;
         maxClients=maxConnections;
+        failCond=fail;
+
+        task = new TimerTask() {
+            public void run() {
+                if(propagateNewVotes.size() > 0){
+                    Map<Long,String> votesThisRound = new HashMap<>();
+
+                    propagateNewVotes.values().forEach( vote -> {
+                        List<Long> ports = vote.get_ports();
+                        List<String> outcomes = vote.get_outcome();
+
+                        Map<Long, String> map = IntStream.range(0, ports.size())
+                                .boxed()
+                                .collect(Collectors.toMap(ports::get, outcomes::get));
+
+                        votesThisRound.putAll(map);
+
+                    });
+
+                    lastState = new ConcurrentHashMap<>(votes);
+                    votes.putAll(votesThisRound);
+                    sendNewVotes.set(true);
+
+                    if(lastState.equals(votes)){
+                        ready.set(true);
+                    }
+
+
+//                    Participant.logger.log(Level.INFO,"???End of a round");
+                    Participant.logger.log(Level.INFO,"Size of votes: {0}",votes.size());
+//                    Participant.logger.log(Level.INFO,"Max clients initially: {0}",maxClientsInitially);
+
+                }
+            }
+        };
+
+
     }
 
 
     public void addClient(Socket client){
-        PeerReadThread reader = new PeerReadThread(client);
+        PeerReadThread reader = new PeerReadThread(client,timeout);
         readers.offer(reader);
 
 //        PeerWriteThread writer = new PeerWriteThread(client);
@@ -42,81 +89,167 @@ public class ListenThread implements Runnable {
     public void run() {
 
 
-
+        maxClientsInitially.set(readers.size());
         ex = Executors.newFixedThreadPool(readers.size());
         readers.forEach( reader -> ex.submit(reader));
 
+
+
+        time.schedule(task,timeout);
 
 
         while (!abort.get()){
             if(!ready.get()){
 
                 String message;
-                if(readers.size() == maxClients && votes.size() == maxClients){
+
+
+                if(votes.keySet().size() >= maxClientsInitially.get()){
                     ready.set(true);
-//                message ="ListenThread ready";
-//                Participant.logger.log(Level.INFO,message);
                 }
-                else {
-                    readers.forEach(reader -> {
-                        if(reader.isReady()){
-//                            if(!votes.containsKey(reader)){
-//                                String msg = MessageFormat.format("Number of votes received: {0} ...",votes.size());
-//                                Participant.logger.log(Level.INFO,msg);
+
+                if(!sendNewVotes.get()){
+//                    System.out.println("Size votes so far: " +propagateNewVotes.size());
+                        Iterator<PeerReadThread> readerIterator = readers.iterator();
+
+                        while (readerIterator.hasNext())
+                        {
+                            PeerReadThread nextReader = readerIterator.next();
+
+                            if(nextReader.isReady()){
+
+
+                                propagateNewVotes.put(nextReader,nextReader.getToken());
+                                if(failCond == 1){
+                                    sendNewVotes.set(true);
+                                }
+                                time.cancel();
+                                time = new Timer();
+                                TimerTask tmp = new TimerTask() {
+                                    public void run() {
+                                        if(propagateNewVotes.size() > 0){
+                                            Map<Long,String> votesThisRound = new HashMap<>();
+
+                                            propagateNewVotes.values().forEach( vote -> {
+                                                List<Long> ports = vote.get_ports();
+                                                List<String> outcomes = vote.get_outcome();
+
+                                                Map<Long, String> map = IntStream.range(0, ports.size())
+                                                        .boxed()
+                                                        .collect(Collectors.toMap(ports::get, outcomes::get));
+
+                                                votesThisRound.putAll(map);
+
+                                            });
+                                            lastState = new ConcurrentHashMap<>(votes);
+                                            votes.putAll(votesThisRound);
+
+                                            if(lastState.equals(votes)){
+                                                ready.set(true);
+                                            }
+                                            sendNewVotes.set(true);
+
+
+//                                            Participant.logger.log(Level.INFO,"???End of a round");
+                                            Participant.logger.log(Level.INFO,"Size of votes: {0}",votes.size());
+                                            Participant.logger.log(Level.INFO,"Max clients initially: {0}",maxClientsInitially);
+
+                                        }
+                                    }
+                                };
+                                time.schedule(tmp,timeout);
+                                Participant.logger.log(Level.INFO,MessageFormat.format("Message received: {0} {1}",nextReader.getToken().get_outcome(),nextReader.getToken().get_ports()));
+                                Participant.logger.log(Level.INFO,MessageFormat.format("Propagate size: {0}",propagateNewVotes.size()));
+
+//                                Participant.logger.log(Level.INFO,MessageFormat.format("Current number of participants: {0}",maxClients));
+                            }
+
+//                            if(nextReader.isClosed()){
+//                                maxClients--;
+////                                roundsLeft.set(true);
+//                                Participant.logger.log(Level.INFO,MessageFormat.format("Participant removed. There are: {0}",maxClients));
+//                                readerIterator.remove();
 //                            }
-                            //Participant.logger.log(Level.INFO,"Saving vote sent...");
-                            votes.putIfAbsent(reader,reader.getToken());
+
+//                            if(nextReader.exhausedTime()){
+//                                exhausedReaders.add(nextReader);
+//                                readerIterator.remove();
+//                            }
+
                         }
-                    });
-                }
+
+
+                    }
 
             }
-//            String message = MessageFormat.format("Number of votes received: {0} ...",votes.size());
-//            Participant.logger.log(Level.INFO,message);
-////
-//            message = MessageFormat.format("Number of readers: {0} ...",readers.size());
-//            Participant.logger.log(Level.INFO,message);
 
-
-//            if(writeBuffer != null){
-//                writers.forEach(writer -> {
-//                    writer.write(writeBuffer);
-//                });
-//                writeBuffer=null;
-//            }
         }
 
     }
 
-//    public void sendVote(String vote){
-//        writeBuffer = vote;
-//    }
-//    private void saveToken(List<MessageToken.VoteToken> tokens){
-//
-//        tokens.forEach(token -> {
-//            if(token != null)
-//            {
-//                vote.add(token);
-//            }
-//        });
-//
-//    }
-
 
     public void shutdownReaders(){
         abort.set(true);
-        ex.shutdown();
-//        readers.forEach(PeerReadThread::shutdown);
+        readers.forEach(PeerReadThread::shutdown);
+//        ex.shutdown();
+    }
+
+    public void abort(){
+        abort.set(true);
     }
 
 
-    public List<MessageToken.VoteToken> getVotes(){
+    public Map<String,String> sendNewVotes(){
+
+
+        Map<String,String> votesThisRound = new HashMap<>();
+
+        propagateNewVotes.values().forEach( vote -> {
+            List<String> ports = vote.get_ports().stream()
+                    .map( port -> Long.toString(port))
+                    .collect(Collectors.toList());
+            List<String> outcomes = vote.get_outcome();
+
+            Map<String, String> map = IntStream.range(0, ports.size())
+                    .boxed()
+                    .collect(Collectors.toMap(ports::get, outcomes::get));
+
+            votesThisRound.putAll(map);
+
+        });
+
+
+
+
+        sendNewVotes.set(false);
+
+//        String message =  votesThisRound.entrySet().stream()
+//                .map(e -> e.getKey() + " " + e.getValue())
+//                .collect(Collectors.joining(" "));
+
+        propagateNewVotes.clear();
+
+        return votesThisRound;
+
+//        return "VOTE " + message;
+    }
+
+    public boolean newVotesNotification(){
+
+        return sendNewVotes.get();
+    }
+
+
+    public Map<Long,String> getVotes(){
 //        MessageToken.VoteToken temp = vote;
-        List<MessageToken.VoteToken> tmp = new ArrayList<>(votes.values());
+        Map<Long,String> tmp = Map.copyOf(votes);
+        Participant.logger.log(Level.INFO,"All the votes have been collected");
         votes.clear();
         ready.set(false);
         return tmp;
     }
+
+
 
     public int getConnectedClients(){
         return readers.size();
