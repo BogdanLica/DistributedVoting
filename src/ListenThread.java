@@ -106,6 +106,7 @@ public class ListenThread implements Runnable {
 
                 if(votes.keySet().size() >= maxClientsInitially.get()){
                     ready.set(true);
+                    Participant.logger.log(Level.INFO,"I am waiting....");
                 }
 
                 if(!sendNewVotes.get()){
@@ -152,7 +153,7 @@ public class ListenThread implements Runnable {
 
 //                                            Participant.logger.log(Level.INFO,"???End of a round");
                                             Participant.logger.log(Level.INFO,"Size of votes: {0}",votes.size());
-                                            Participant.logger.log(Level.INFO,"Max clients initially: {0}",maxClientsInitially);
+//                                            Participant.logger.log(Level.INFO,"Max clients initially: {0}",maxClientsInitially);
 
                                         }
                                     }
@@ -184,6 +185,61 @@ public class ListenThread implements Runnable {
             }
 
         }
+
+    }
+
+
+    public void stopListening(){
+        this.ready.set(true);
+        this.sendNewVotes.set(true);
+        time.cancel();
+        propagateNewVotes.clear();
+        votes.clear();
+
+    }
+
+    public void startListening(){
+        votes.clear();
+        propagateNewVotes.clear();
+        time = new Timer();
+
+        task = new TimerTask() {
+            public void run() {
+                    Map<Long,String> votesThisRound = new HashMap<>();
+
+                    propagateNewVotes.values().forEach( vote -> {
+                        List<Long> ports = vote.get_ports();
+                        List<String> outcomes = vote.get_outcome();
+
+                        Map<Long, String> map = IntStream.range(0, ports.size())
+                                .boxed()
+                                .collect(Collectors.toMap(ports::get, outcomes::get));
+
+                        votesThisRound.putAll(map);
+
+                    });
+
+                    lastState = new ConcurrentHashMap<>(votes);
+                    votes.putAll(votesThisRound);
+                    sendNewVotes.set(true);
+
+                    if(lastState.equals(votes)){
+                        ready.set(true);
+                    }
+
+
+//                    Participant.logger.log(Level.INFO,"???End of a round");
+                    Participant.logger.log(Level.INFO,"Size of votes: {0}",votes.size());
+//                    Participant.logger.log(Level.INFO,"Max clients initially: {0}",maxClientsInitially);
+
+            }
+        };
+
+
+        time.schedule(task,timeout);
+
+        this.sendNewVotes.set(false);
+        this.ready.set(false);
 
     }
 
