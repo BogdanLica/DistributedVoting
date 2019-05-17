@@ -1,4 +1,3 @@
-import javax.sound.midi.SysexMessage;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -6,9 +5,6 @@ import java.text.MessageFormat;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 public class Participant {
@@ -16,19 +12,16 @@ public class Participant {
     private int COORDINATOR_PORT;
     private int TIMEOUT;
     private int failCond;
-    private AtomicInteger round = new AtomicInteger(1);
     private AtomicBoolean sendOutcomeReady = new AtomicBoolean(false);
     private AtomicBoolean wait = new AtomicBoolean(false);
     private Queue<Long> ports = new ConcurrentLinkedQueue<>();
     private Queue<PeerWriteThread> peers = new ConcurrentLinkedQueue<>();
-    private Map<String,Integer> votesReceived = new ConcurrentHashMap<>();
     private List<String> options = new CopyOnWriteArrayList<>();
     private volatile String outcome;
     private volatile String myVote;
     private ListenThread listenConnection;
-    ServerSocket listen = null;
+    private ServerSocket listen = null;
 
-    public final static Logger logger = Logger.getLogger(Participant.class.getName());
 
     public static void main(String[] args){
         Participant me = new Participant(Integer.parseInt(args[0]),Long.parseLong(args[1]),Integer.parseInt(args[2]),Integer.parseInt(args[3]));
@@ -44,6 +37,9 @@ public class Participant {
         failCond = fail;
     }
 
+    /**
+     * Start to listen for other participants to connect to my port
+     */
     private void startListening(){
 
         try {
@@ -58,8 +54,6 @@ public class Participant {
                         Socket socket = Objects.requireNonNull(finalListen).accept();
                         listenConnection.addClient(socket);
                     } catch (IOException e) {
-                        logger.log(Level.WARNING,"Could not accept a new client");
-                        //e.printStackTrace();
                     }
 
                 }
@@ -75,21 +69,20 @@ public class Participant {
 
 
         } catch (IOException e) {
-            //e.printStackTrace();
-            String message = MessageFormat.format("Could not start listening on the port {0}",Long.toString(LISTENING_PORT));
-            logger.log(Level.WARNING,message);
         }
 
 
     }
 
 
+    /**
+     * Check if all the votes have been received or if new messages need to be sent
+     * to the other participants as a new round has started
+     */
     private void setOutcome(){
         while (true){
             if (!wait.get()){
-//                logger.log(Level.WARNING,"ALIVE OUTSIDE");
                 if (!sendOutcomeReady.get()){
-//                    logger.log(Level.WARNING,"ALIVE INSIDE");
                     if (listenConnection.isReady()){
 
                         Map<Long,String> votes = listenConnection.getVotes();
@@ -100,17 +93,16 @@ public class Participant {
 
                         peers.forEach(peer -> {
                             peer.write("VOTE " + v);
-//                        logger.log(Level.INFO,message);
                         });
 
 
 
                         String message = "Computing decision...";
-                        Participant.logger.log(Level.INFO,message);
+                        System.out.println(message);
 
 
                         message = MessageFormat.format("My vote was {0}...",myVote);
-                        Participant.logger.log(Level.INFO,message);
+                        System.out.println(message);
 
 
                         Map<String,Integer> result = new HashMap<>();
@@ -131,63 +123,24 @@ public class Participant {
                                     }
                                 });
 
-//                    message = MessageFormat.format("Decision made with {0} votes...",votes.values().size());
-//                    Participant.logger.log(Level.INFO,message);
-
-                        message = MessageFormat.format("The votes were {0}...",votes.values());
-                        Participant.logger.log(Level.INFO,message);
+                        message = MessageFormat.format("The votes received were {0}...",votes.values());
+                        System.out.println(message);
 
 
 
 
-                        System.out.println("");
                         outcome = decideOutcome(result);
                         listenConnection.stopListening();
                         sendOutcomeReady.set(true);
-//                        break;
 
-
-                        /**
-                         * Check if different result are achieved over the course of multiple rounds
-                         */
-//                    String allOptions = result.keySet()
-//                            .stream()
-//                            .map(Object::toString)
-//                            .collect(Collectors.joining(" "));
-//
-//                    String allValues = result.values()
-//                            .stream()
-//                            .map(Object::toString)
-//                            .collect(Collectors.joining(" "));
-//
-//                    message = MessageFormat.format("Options: {0}",allOptions);
-//                    Participant.logger.log(Level.INFO,message);
-//                    message = MessageFormat.format("Values: {0}",allValues);
-//                    Participant.logger.log(Level.INFO,message);
-//
-//
-//
-//                    outcome = decideOutcome(result);
                     }
-//                logger.log(Level.INFO,"BLOCKED");
                     else if(listenConnection.newVotesNotification()){
-
+                        System.out.println("New round started....");
                         if(failCond == 1){
-//                    Thread.sleep(1000);
                             listenConnection.abort();
                             propagateNewMessages(listenConnection);
                             System.exit(0);
                             break;
-//                        try {
-//                            listen.close();
-//                            listenConnection.shutdownReaders();
-//                            peers.forEach(PeerWriteThread::shutdown);
-//                            logger.log(Level.INFO,"Closing..");
-//                            return;
-//                        } catch (IOException e) {
-//                            e.printStackTrace();
-//                        }
-//                        System.exit(0);
                         }
                         else {
                             propagateNewMessages(listenConnection);
@@ -202,27 +155,31 @@ public class Participant {
 
     }
 
-
+    /**
+     * For a new round, send the messages received in the previous round to all connected participants
+     * @param connection the manager for all the readers
+     */
     private void propagateNewMessages(ListenThread connection){
 
         Map<String,String> votesThisRound = connection.sendNewVotes();
-//                    votesThisRound.remove(Long.toString(LISTENING_PORT));
 
         peers.forEach(peer -> {
             String message =  votesThisRound.entrySet()
                     .stream()
-//                    .filter(e -> !(e.getKey().equals(Integer.toString(peer.getPort()))))
                     .map(e -> e.getKey() + " " + e.getValue())
                     .collect(Collectors.joining(" "));
 
 
 
             peer.write("VOTE " + message);
-//                        logger.log(Level.INFO,message);
         });
 
     }
 
+    /**
+     * Decide on my own vote
+     * @return the vote option choosen
+     */
     private String ownDecision() {
         int index = ThreadLocalRandom.current().nextInt(options.size());
 
@@ -230,7 +187,11 @@ public class Participant {
     }
 
 
-
+    /**
+     * Based on the votes, decide on outcome
+     * @param result the votes received
+     * @return the vote options with the most votes or null if TIE
+     */
     private String decideOutcome(Map<String,Integer> result){
         int max = result.values().stream().max(Comparator.naturalOrder()).get();
         List<String> keysWithMaxValues = result.entrySet().stream()
@@ -240,13 +201,12 @@ public class Participant {
 
         return (keysWithMaxValues.size() > 1) ? "null" : keysWithMaxValues.get(0);
 
-//        if(keysWithMaxValues.size() > 1) return "null"
-//
-//        return Collections.max(result.entrySet(), Comparator.comparingInt(Map.Entry::getValue)).getKey();
     }
 
 
-
+    /**
+     * Start the connection with the Coordinator
+     */
     private void contactCoordinator() {
 
         try {
@@ -258,14 +218,13 @@ public class Participant {
             BufferedReader in = new BufferedReader(
                     new InputStreamReader(coordinator.getInputStream()));
 
-            //logger.log(Level.INFO,"Connected to the server...");
 
             String line = null;
 
             out.write(MessageFormat.format("JOIN {0}", Long.toString(this.LISTENING_PORT)));
             out.newLine();
             out.flush();
-            logger.log(Level.INFO, "A Join Token was just sent to the server...");
+            System.out.println("A Join Token was just sent to the server...");
             AtomicBoolean restartVote = new AtomicBoolean(false);
 
             new Thread( () -> {
@@ -285,24 +244,11 @@ public class Participant {
                                 out.newLine();
                                 out.flush();
                                 sendOutcomeReady.set(false);
-                                logger.log(Level.INFO, "Sending the Outcome to the server...");
+                                System.out.println("Sending the Outcome to the server...");
 
                                 if(!outcome.equals("null")){
                                     System.exit(0);
                                 }
-
-//                                restartVote.set(true);
-
-
-
-//                                myVote = ownDecision();
-//                                Thread.sleep(TIMEOUT*2);
-//                                peers.forEach(peer -> {
-//                                    peer.write(MessageFormat.format("VOTE {0} {1}", Long.toString(LISTENING_PORT), myVote));
-//                                });
-//                                sendOutcomeReady.set(false);
-
-
 
                             } catch (Exception e) {
                                 e.printStackTrace();
@@ -323,12 +269,12 @@ public class Participant {
                     if (newToken instanceof MessageToken.DetailsToken) {
                         MessageToken.DetailsToken details = (MessageToken.DetailsToken) newToken;
                         ports.addAll(details.get_ports());
-                        logger.log(Level.INFO, "Reading a Details Token...");
+                        System.out.println("Reading a Details Token...");
 
 
                     } else if (newToken instanceof MessageToken.VoteOptionsToken) {
                         MessageToken.VoteOptionsToken vote = (MessageToken.VoteOptionsToken) newToken;
-                        logger.log(Level.INFO, "Reading a Vote Option Token...");
+                        System.out.println("Reading a Vote Option Token...");
                         options.clear();
                         options.addAll(vote.get_options());
 
@@ -339,6 +285,7 @@ public class Participant {
                             peerConnectionStart();
                             this.startListening();
                         }
+                        // already connected
                         else{
 
                             peers.forEach(peer -> {
@@ -350,14 +297,7 @@ public class Participant {
                             this.wait.set(false);
                         }
 
-                    } else {
-                        logger.log(Level.INFO, "Empty");
                     }
-
-                    /**
-                     * TODO: Implement restart message
-                     */
-//                    else if(newToken instanceof )
 
 
                 }
@@ -365,10 +305,12 @@ public class Participant {
             }
 
         } catch (IOException e) {
-            e.printStackTrace();
         }
     }
 
+    /**
+     * Shutdown the connection with the other participants
+     */
     private void closeParticipantConnections() {
         listenConnection.shutdownReaders();
         for (PeerWriteThread peer : peers) {
@@ -377,10 +319,14 @@ public class Participant {
         try {
             listen.close();
         } catch (IOException e) {
-            logger.log(Level.INFO,"Closing my listening port");
+            System.out.println("Closing my listening port");
         }
     }
 
+    /**
+     * Get the string representation of the outcome
+     * @return the outcome as a String
+     */
     private String sendOutcome(){
         List<Long> portsCopy = new ArrayList<>(ports);
         portsCopy.add(LISTENING_PORT);
@@ -392,9 +338,14 @@ public class Participant {
         return MessageFormat.format("OUTCOME {0} {1}",outcome,allPorts);
     }
 
+    /**
+     * Initiate the peer to peer connection and after all the connections are established,
+     * send my vote option
+     */
     private void peerConnectionStart(){
         List<Long> portsCopy = new CopyOnWriteArrayList<>(ports);
         new Thread(() -> {
+            // try to connect to clients until they are up
             while (peers.size()<ports.size()){
                 portsCopy.forEach(port -> {
                     Socket peer = null;
@@ -405,8 +356,6 @@ public class Participant {
                         portsCopy.remove(port);
 
                     } catch (IOException e) {
-//                    e.printStackTrace();
-                        logger.log(Level.INFO,"Error connecting to port {0} ...",port.intValue());
                     }
 
 
@@ -427,9 +376,7 @@ public class Participant {
                             peer.write(MessageFormat.format("VOTE {0} {1}",Long.toString(LISTENING_PORT),myVote));
                         });
 
-                //TODO: fail participant by closing all sockets
-
-                logger.log(Level.INFO,MessageFormat.format("I skipped {0} participants",skipElements));
+                System.out.println(MessageFormat.format("I skipped {0} participants",skipElements));
 
             }
             else {
@@ -439,24 +386,5 @@ public class Participant {
             }
 
         }).start();
-    }
-
-
-    public void resendMessage(){
-        new Thread(() -> {
-                try {
-                    Thread.sleep(TIMEOUT);
-                    peers.forEach(peer -> {
-                        peer.write(MessageFormat.format("VOTE {0} {1}",Long.toString(LISTENING_PORT),myVote));
-                    });
-//                    checkBufferForNewMessages.countDown();
-//                    conditionLatch = new CountDownLatch(1);
-//                    conditionLatch.await();
-                } catch (InterruptedException e) {
-//                e.printStackTrace();
-                    logger.log(Level.INFO,"Could not sleep Retransmission Thread...");
-                }
-        }).start();
-
     }
 }

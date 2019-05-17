@@ -15,75 +15,65 @@ import java.util.logging.Level;
 public class PeerWriteThread implements Runnable {
     private Socket _client;
     private BufferedWriter writer;
-//    private List<String> buffer = new CopyOnWriteArrayList<>();
     private AtomicReference<String> buffer = new AtomicReference<>("");
     private AtomicBoolean abortWrite = new AtomicBoolean(false);
 
+    /**
+     * A thread that given a socket, it will send messages to the socket and
+     * @param client the socket of the client connected to
+     */
     public PeerWriteThread(Socket client){
         this._client=client;
     }
 
+    /**
+     * If the Participant class specifies that wants to send a message by putting it in this buffer
+     * @param tmp the string to be sent in the future to the socket of the client
+     */
     public void write(String tmp){
         buffer.set(tmp);
     }
 
 
+    /**
+     * Write the given string to the socket
+     * @param text the string to be sent across
+     */
     private void writeToSocket(String text){
         try {
             String message = MessageFormat.format("Sending message {0} to port {1}",text,_client.getPort());
-            Participant.logger.log(Level.INFO,message);
+            System.out.println(message);
             writer.write(text);
             writer.newLine();
             writer.flush();
 
         } catch (IOException e) {
             abortWrite.set(true);
-//            String message = MessageFormat.format("Could not write to port {0}",_client.getPort());
-//            Participant.logger.log(Level.WARNING,message);
         }
     }
 
 
-
+    /**
+     * Shutdown the writer
+     */
     public void shutdown(){
         try {
             writer.close();
-//            _client.shutdownOutput();
             _client.close();
         } catch (IOException e) {
-//            e.printStackTrace();
-            Participant.logger.log(Level.INFO,"Closed connection to a peer");
+            System.out.println("Closed connection to a peer");
         }
 
     }
-
-
-    public boolean getStatusUP(){
-        return abortWrite.get();
-    }
-
-
-    public Integer getPort(){
-        return _client.getPort();
-    }
-
-
-
-//    public Integer getPortNumber(){
-//        return _client.getPort();
-//    }
-
-
 
     @Override
     public void run() {
 
         try {
             writer = new BufferedWriter(new OutputStreamWriter(_client.getOutputStream()));
-//            reader = new BufferedReader(new InputStreamReader(_client.getInputStream()));
 
             String message = MessageFormat.format("New connection accepted from port {0}",_client.getPort());
-            Participant.logger.log(Level.INFO,message);
+            System.out.println(message);
 
             while (true){
 
@@ -92,19 +82,12 @@ public class PeerWriteThread implements Runnable {
                     buffer.set("");
                 }
 
-//                Thread.sleep(1000);
 
             }
 
         } catch (IOException e) {
-//            e.printStackTrace();
-            String message = MessageFormat.format("Writer or Reader could not be created for port {0}",_client.getPort());
-            Participant.logger.log(Level.WARNING,message);
 
         }
-//        catch (InterruptedException e){
-//            Thread.currentThread().interrupt();
-//        }
 
     }
 }

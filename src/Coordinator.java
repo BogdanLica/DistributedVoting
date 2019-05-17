@@ -3,32 +3,23 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.text.MessageFormat;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class Coordinator {
     private int LISTENING_PORT;
     private int MAX_CONNECTIONS;
     private List<String> options = new ArrayList<>();
-//    private List<Socket> participants = new ArrayList<>(MAX_CONNECTIONS);
-//    private Map<Socket, BufferedReader> readers = Collections.synchronizedMap(new HashMap<>(MAX_CONNECTIONS));
-//    private Map<Socket, BufferedWriter> writers = Collections.synchronizedMap(new HashMap<>(MAX_CONNECTIONS));
     private List<Integer> participants = new CopyOnWriteArrayList<>();
-    private Map<MessageToken.Token,Integer> tokenToPort = Collections.synchronizedMap(new HashMap<>(MAX_CONNECTIONS));
     private List<MessageToken.OutcomeToken> outcomes = new CopyOnWriteArrayList<MessageToken.OutcomeToken>();
-    public final static Logger logger = Logger.getLogger(Coordinator.class.getName());
     private AtomicBoolean resultReady = new AtomicBoolean(false);
     private Timer time = new Timer();
 
     public static void main(String[] args){
 
         if(args.length < 3){
-            logger.log(Level.SEVERE,"Not enough arguments...");
+            System.out.println("Not enough arguments...");
         }
         else {
             List<String> options = Arrays.stream(args)
@@ -51,9 +42,10 @@ public class Coordinator {
 
         try {
             ServerSocket listen = new ServerSocket(LISTENING_PORT);
-            logger.log(Level.INFO,"Waiting for connections...");
+            System.out.println("Waiting for connections...");
 
            Socket client;
+
 
            while (participants.size() < MAX_CONNECTIONS){
 
@@ -69,26 +61,25 @@ public class Coordinator {
 
 
                            try {
-                               //if ((line = in.readLine()) == null) Thread.sleep(1000);
                                if((line = in.readLine()) != null) {
                                    MessageToken.Token newToken = msg.getToken(line);
                                    if (newToken instanceof MessageToken.JoinToken){
                                        boolean hold = true;
-                                       logger.log(Level.INFO,"A Join Token was received by the server...");
+                                       System.out.println("A Join Token was received by the server...");
                                        MessageToken.JoinToken msgJoin = (MessageToken.JoinToken) newToken;
                                        participants.add(msgJoin.get_port());
                                        port = msgJoin.get_port();
 
+                                       // wait until all the participants have connected
                                        while (hold)
                                        {
-//                                       tokenToPort.put(msgJoin,msgJoin.get_port());
                                            if(participants.size() == MAX_CONNECTIONS){
                                                out.write(sendParticipants(port));
                                                out.newLine();
-                                               logger.log(Level.INFO,"A Details Token was sent by the server...");
+                                               System.out.println(MessageFormat.format("A Details Token was sent by the server to the port {0} ...",port));
                                                out.write(sendVoteOptions(false));
                                                out.newLine();
-                                               logger.log(Level.INFO,"A Vote Options Token was sent by the server...");
+                                               System.out.println(MessageFormat.format("A Vote Options Token was sent by the server to the port {0} ...",port));
                                                out.flush();
                                                hold=false;
 
@@ -99,7 +90,6 @@ public class Coordinator {
 
                                    else if (newToken instanceof MessageToken.OutcomeToken) {
                                        MessageToken.OutcomeToken msgOutcome = (MessageToken.OutcomeToken) newToken;
-//                                       time.cancel();
                                        outcomes.add(msgOutcome);
 
                                        String ports = msgOutcome.get_ports()
@@ -108,7 +98,11 @@ public class Coordinator {
                                                .collect(Collectors.joining(" "));
 
                                        String message = MessageFormat.format("Outcome result : {0} from {1}",msgOutcome.getOutcome(),ports);
-                                       logger.log(Level.INFO,message);
+                                       if(msgOutcome.getOutcome().equals("null")){
+                                           message = MessageFormat.format("Outcome result : TIE from {0}",ports);
+                                       }
+
+                                       System.out.println(message);
                                        time.cancel();
 
                                        TimerTask task = new TimerTask() {
@@ -119,20 +113,6 @@ public class Coordinator {
                                            time = new Timer();
                                            time.schedule(task,1000*participants.size());
 
-//                                       if(outcomes.size() == participants.size()){
-//                                           resultReady.set(true);
-//                                       }
-//                                       else{
-//                                           TimerTask task = new TimerTask() {
-//                                               public void run() {
-//                                                   if(outcomes.size() != participants.size()){
-//                                                       resultReady.set(true);
-//                                                   }
-//                                               }
-//                                           };
-//                                           time = new Timer();
-//                                           time.schedule(task,1000*participants.size());
-//                                       }
 
 
                                        new Thread( () -> {
@@ -141,15 +121,17 @@ public class Coordinator {
                                                if((outcomes.size() == participants.size()) || resultReady.get() ){
                                                    time.cancel();
                                                    List<MessageToken.OutcomeToken> outTmp = new ArrayList<>(outcomes);
-//                                                   time.cancel();
-//                                                   logger.log(Level.INFO,"I'm inside...");
                                                    boolean sameResult = outTmp.stream()
                                                            .map(MessageToken.OutcomeToken::getOutcome)
                                                            .distinct()
                                                            .count() <= 1;
 
                                                    if(sameResult){
-                                                       String result = outTmp.get(0).getOutcome();
+                                                       String result = "";
+                                                       if (outTmp.size() > 0) {
+                                                           result= outTmp.get(0).getOutcome();
+                                                       }
+
 
                                                        if(result.equals("null")){
                                                            outTmp.clear();
@@ -158,7 +140,7 @@ public class Coordinator {
                                                            try {
                                                                out.write(sendVoteOptions(true));
                                                                out.newLine();
-                                                               logger.log(Level.INFO,"New Vote Options Token was sent by the server...");
+                                                               System.out.println("New Vote Options Token was sent by the server...");
                                                                out.flush();
                                                                outcomes = new CopyOnWriteArrayList<MessageToken.OutcomeToken>();
                                                                break;
@@ -171,17 +153,17 @@ public class Coordinator {
                                                        }
                                                        else {
 
-                                                           String success = MessageFormat.format("Outcome: {0}",outTmp.get(0).getOutcome());
-                                                           logger.log(Level.INFO,success);
-                                                           String congrats = MessageFormat.format("Congrats to {0}",outTmp.get(0).get_ports());
-                                                           logger.log(Level.INFO,congrats);
+                                                           String success = MessageFormat.format("Success: Outcome is {0}",result);
+                                                           System.out.println(success);
+                                                           String congrats = MessageFormat.format("Congrats to {0}",result);
+                                                           System.out.println(congrats);
                                                            System.exit(0);
                                                        }
 
 
                                                    } else {
                                                        String error = "I did not get the same outcome from all participants. Error ";
-                                                       logger.log(Level.WARNING,error);
+                                                       System.out.println(error);
                                                        System.exit(0);
                                                    }
 
@@ -193,21 +175,10 @@ public class Coordinator {
                                    }
                                }
                            } catch (IOException e) {
-                               //e.printStackTrace();
-                               String message = MessageFormat.format("Could not read the next line on socket {0} ...",finalClient.getPort());
-                               logger.log(Level.WARNING,message);
                            }
-//                           catch (InterruptedException e) {
-//                               //e.printStackTrace();
-//                               String message = MessageFormat.format("Thread could not be suspended for client socket {0} ...",finalClient.getPort());
-//                               logger.log(Level.WARNING,message);
-//                           }
 
                        }
                    } catch (IOException e) {
-//                    e.printStackTrace();
-                       String message = MessageFormat.format("Writer/Reader could not be created for port {0} ...",finalClient.getPort());
-                       logger.log(Level.WARNING,message);
                    }
                }).start();
            }
@@ -216,17 +187,19 @@ public class Coordinator {
 
 
         } catch (IOException e) {
-//            e.printStackTrace();
-
             String message = MessageFormat.format("Could start listening/accept connections on the port {0} ...",LISTENING_PORT);
-            logger.log(Level.WARNING,message);
+            System.out.println(message);
         }
 
 
     }
 
 
-
+    /**
+     * The Details Options as a String
+     * @param client the client to be excluded from the list of participants
+     * @return the participants that are connected
+     */
     private String sendParticipants(Integer client){
         String ports = participants
                 .stream()
@@ -237,6 +210,11 @@ public class Coordinator {
         return MessageFormat.format("DETAILS {0}", ports);
     }
 
+    /**
+     * The Vote Options as a String
+     * @param fewer check if restart
+     * @return all vote options for this run
+     */
     private synchronized String sendVoteOptions(boolean fewer){
         String options = "";
         if (fewer){
@@ -254,7 +232,9 @@ public class Coordinator {
     }
 
 
-
+    /**
+     * Check if the Coordinator should wait for anymore new outcome messages
+     */
     private synchronized void checkOutcomes(){
         if(outcomes.size() != participants.size()){
             resultReady.set(true);

@@ -1,28 +1,24 @@
 import java.io.*;
 import java.net.Socket;
-import java.net.SocketException;
-import java.sql.Time;
-import java.text.MessageFormat;
 import java.util.*;
-import java.util.concurrent.BrokenBarrierException;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.logging.Level;
 
 public class PeerReadThread implements Runnable {
     private Socket _client;
     private BufferedReader reader;
     private AtomicBoolean ready = new AtomicBoolean(false);
-//    private  vote = null;
-//    private List<String> buffer = new CopyOnWriteArrayList<>();
     private AtomicReference<MessageToken.VoteToken> buffer = new AtomicReference<>();
     private AtomicBoolean running = new AtomicBoolean(true);
     private AtomicBoolean closed = new AtomicBoolean(false);
     private int timeout;
 
-
+    /**
+     * A thread that given a socket, it will listen for messages and
+     * when there is a message, it will put it in a buffer
+     * @param client the socket of the client connected to
+     * @param timeout after the time is exceeded without any new read, the client is considered to be disconnected
+     */
     public PeerReadThread(Socket client,int timeout){
         this._client=client;
 
@@ -30,27 +26,19 @@ public class PeerReadThread implements Runnable {
 
 
         try {
-//            writer = new BufferedWriter(new OutputStreamWriter(_client.getOutputStream()));
             reader = new BufferedReader(new InputStreamReader(_client.getInputStream()));
 
         } catch (IOException e) {
-//            e.printStackTrace();
-            String message = MessageFormat.format("Reader could not be created for port {0} ...",_client.getPort());
-            Participant.logger.log(Level.WARNING,message);
 
         }
-
-//        try {
-//            _client.setSoTimeout(timeout);
-//        } catch (SocketException e) {
-//            closed.set(true);
-//        }
-
 
     }
 
 
-
+    /**
+     * Return the next message read from the socket into the buffer
+     * @return the message received from the socket
+     */
     public MessageToken.VoteToken getToken(){
         ready.set(false);
         return buffer.get();
@@ -78,46 +66,27 @@ public class PeerReadThread implements Runnable {
                         if(newToken instanceof MessageToken.VoteToken)
                         {
 
-//                            String message = MessageFormat.format("Received message {0}",((MessageToken.VoteToken)newToken).get_outcome());
-//                            Participant.logger.log(Level.INFO,message);
                             buffer.set((MessageToken.VoteToken)newToken);
-//                            newTokens.add(vote);
-//                            saveToken(newTokens);
                             ready.set(true);
                         }
 
-//                    System.out.println(line);
                     }
                 }
 
 
-//                Thread.sleep(1000);
 
             }
-//            catch (SocketException e) {
-//                closed.set(true);
-//            }
             catch (IOException e)
             {
-//                String message = MessageFormat.format("Could not read from port {0} ...",_client.getPort());
-//                Participant.logger.log(Level.WARNING,message);
-//                closed.set(true);
-//                running.set(false);
             }
-//            catch (InterruptedException e){
-//                Thread.currentThread().interrupt();
-//            }
-//            catch (InterruptedException e){
-//                String message = MessageFormat.format("Could not sleep thread {0} ...",Thread.currentThread().getName());
-//                Participant.logger.log(Level.WARNING,message);
-//            }
-
 
         }
 
     }
 
-
+    /**
+     * Shutdown the reader
+     */
     public void shutdown(){
         running.set(false);
         try {
@@ -128,12 +97,11 @@ public class PeerReadThread implements Runnable {
         }
     }
 
+    /**
+     * Check if the buffer has been filled
+     * @return status of buffer
+     */
     public boolean isReady(){
         return ready.get();
-    }
-
-
-    public boolean isClosed() {
-        return closed.get();
     }
 }
